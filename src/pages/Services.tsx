@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Zap, ZapOff } from "lucide-react";
+import { Plus, Zap, ZapOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { getServiceLogo, getCategoryColor } from "@/lib/logos";
 import {
   Dialog,
   DialogContent,
@@ -123,7 +124,9 @@ export default function Services() {
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Serviços</h2>
+            <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              Serviços
+            </h2>
             <p className="text-muted-foreground">
               Gerir fornecedores e configurações de autopay
             </p>
@@ -204,71 +207,112 @@ export default function Services() {
         </div>
 
         {loading ? (
-          <p className="text-muted-foreground">A carregar...</p>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-64 rounded-lg bg-muted animate-pulse" />
+            ))}
+          </div>
         ) : services.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <p className="text-muted-foreground mb-4">
-                Ainda não tem serviços registados
-              </p>
-              <Button onClick={() => setDialogOpen(true)}>
+          <Card className="border-2 border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-16 space-y-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Plus className="h-8 w-8 text-primary" />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-medium mb-1">Ainda não tem serviços registados</p>
+                <p className="text-sm text-muted-foreground">
+                  Adicione o seu primeiro fornecedor para começar a rastrear faturas
+                </p>
+              </div>
+              <Button onClick={() => setDialogOpen(true)} size="lg" className="gap-2">
+                <Plus className="h-4 w-4" />
                 Adicionar Primeiro Serviço
               </Button>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {services.map((service) => (
-              <Card key={service.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle>{service.issuer}</CardTitle>
-                      <CardDescription className="mt-1">
-                        {service.category || "Sem categoria"}
-                      </CardDescription>
+            {services.map((service) => {
+              const logo = getServiceLogo(service.issuer, service.category);
+              const categoryColor = getCategoryColor(service.category);
+              
+              return (
+                <Card 
+                  key={service.id} 
+                  className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-2 hover:border-primary/50 overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  
+                  <CardHeader className="relative">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-xl bg-card border-2 border-border flex items-center justify-center overflow-hidden shadow-sm">
+                          <img src={logo} alt={service.issuer} className="w-full h-full object-cover" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">{service.issuer}</CardTitle>
+                          {service.category && (
+                            <CardDescription className={`mt-0.5 font-medium ${categoryColor}`}>
+                              {service.category}
+                            </CardDescription>
+                          )}
+                        </div>
+                      </div>
+                      <Badge
+                        variant={service.status === "active" ? "default" : "secondary"}
+                        className="shrink-0"
+                      >
+                        {service.status}
+                      </Badge>
                     </div>
-                    <Badge
-                      variant={service.status === "active" ? "default" : "secondary"}
-                    >
-                      {service.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {service.contract_number && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Nº Contrato</p>
-                      <p className="text-sm font-medium">{service.contract_number}</p>
+                  </CardHeader>
+
+                  <CardContent className="relative space-y-4">
+                    {service.contract_number && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-xs text-muted-foreground mb-1">Nº Contrato</p>
+                        <p className="text-sm font-mono font-medium">{service.contract_number}</p>
+                      </div>
+                    )}
+                    
+                    {service.autopay_limit_cents && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-xs text-muted-foreground mb-1">Limite Autopay</p>
+                        <p className="text-sm font-bold">
+                          {formatCurrency(service.autopay_limit_cents)}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-3 border-t border-border">
+                      <div className="flex items-center gap-2">
+                        {service.autopay ? (
+                          <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center">
+                            <Zap className="h-4 w-4 text-success" />
+                          </div>
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                            <ZapOff className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-medium">Autopay</p>
+                          <p className="text-xs text-muted-foreground">
+                            {service.autopay ? "Ativado" : "Desativado"}
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={service.autopay}
+                        onCheckedChange={() =>
+                          toggleAutopay(service.id, service.autopay)
+                        }
+                      />
                     </div>
-                  )}
-                  {service.autopay_limit_cents && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Limite Autopay</p>
-                      <p className="text-sm font-medium">
-                        {formatCurrency(service.autopay_limit_cents)}
-                      </p>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <div className="flex items-center gap-2">
-                      {service.autopay ? (
-                        <Zap className="h-4 w-4 text-success" />
-                      ) : (
-                        <ZapOff className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <span className="text-sm font-medium">Autopay</span>
-                    </div>
-                    <Switch
-                      checked={service.autopay}
-                      onCheckedChange={() =>
-                        toggleAutopay(service.id, service.autopay)
-                      }
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
