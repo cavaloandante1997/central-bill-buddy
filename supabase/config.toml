@@ -1,1 +1,4 @@
 project_id = "pfacpffchmnsyyohtjew"
+
+[functions.categorize-invoice]
+verify_jwt = false
