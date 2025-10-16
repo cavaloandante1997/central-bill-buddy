@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, Home, Receipt, CreditCard } from "lucide-react";
+import { LogOut, Settings, Home, Receipt, CreditCard, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { InvoiceUploadDialog } from "@/components/invoices/InvoiceUploadDialog";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -13,6 +14,8 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -90,6 +93,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             <div className="flex items-center space-x-2">
               <Button
+                onClick={() => setUploadDialogOpen(true)}
+                className="gap-2"
+                size="sm"
+              >
+                <Upload className="h-4 w-4" />
+                Carregar Fatura
+              </Button>
+              <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate("/settings")}
@@ -114,6 +125,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <main className="container mx-auto px-4 py-8">
         {children}
       </main>
+
+      {/* Invoice Upload Dialog */}
+      <InvoiceUploadDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        onSuccess={() => {
+          setRefreshKey(prev => prev + 1);
+          // Trigger a page refresh or callback if needed
+        }}
+      />
     </div>
   );
 }

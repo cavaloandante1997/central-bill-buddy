@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getServiceLogo, getCategoryColor } from "@/lib/logos";
-import { Zap, Calendar } from "lucide-react";
+import { Zap, Calendar, Building2 } from "lucide-react";
 
 interface ServiceCardProps {
   service: {
@@ -10,6 +10,7 @@ interface ServiceCardProps {
     category?: string | null;
     contract_number?: string | null;
     autopay?: boolean;
+    logo_url?: string | null;
   };
   nextInvoice?: {
     due_date: string;
@@ -20,7 +21,7 @@ interface ServiceCardProps {
 }
 
 export function ServiceCard({ service, nextInvoice, onClick }: ServiceCardProps) {
-  const logo = getServiceLogo(service.issuer, service.category);
+  const logo = getServiceLogo(service.issuer, service.category, service.logo_url);
   const categoryColor = getCategoryColor(service.category);
 
   const formatCurrency = (amount: number) => {
@@ -50,7 +51,11 @@ export function ServiceCard({ service, nextInvoice, onClick }: ServiceCardProps)
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-card border-2 border-border flex items-center justify-center overflow-hidden shadow-sm">
-              <img src={logo} alt={service.issuer} className="w-full h-full object-cover" />
+              {logo ? (
+                <img src={logo} alt={service.issuer} className="w-full h-full object-contain p-2" />
+              ) : (
+                <Building2 className="h-6 w-6 text-muted-foreground" />
+              )}
             </div>
             <div>
               <h3 className="font-semibold text-base leading-tight">{service.issuer}</h3>

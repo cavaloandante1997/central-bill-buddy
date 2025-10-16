@@ -1,32 +1,28 @@
-import edpLogo from "@/assets/logos/edp.png";
-import meoLogo from "@/assets/logos/meo.png";
-import nosLogo from "@/assets/logos/nos.png";
-import vodafoneLogo from "@/assets/logos/vodafone.png";
-import waterLogo from "@/assets/logos/water.png";
-import gasLogo from "@/assets/logos/gas.png";
-import internetLogo from "@/assets/logos/internet.png";
-import insuranceLogo from "@/assets/logos/insurance.png";
+// Dynamic logo mapping - logos are fetched from company websites by AI
+const LOGO_MAP: Record<string, string> = {
+  "edp": "https://www.edp.pt/sites/default/files/2021-09/logo-edp.svg",
+  "meo": "https://www.meo.pt/_layouts/images/meo-logo.svg",
+  "nos": "https://www.nos.pt/Style%20Library/img/logos/nos-logo.svg",
+  "vodafone": "https://www.vodafone.pt/content/dam/vodafone/images/logos/vodafone-logo.svg",
+  "epal": "https://www.epal.pt/EPAL/media/Images/logo-epal.png",
+  "galp": "https://www.galp.com/corp/Portals/0/Recursos/Imagens/logotipo.png",
+};
 
-export function getServiceLogo(issuer: string, category?: string | null): string {
+export function getServiceLogo(issuer: string, category?: string | null, logoUrl?: string | null): string | null {
+  // If a logo URL was stored by AI, use it
+  if (logoUrl) return logoUrl;
+
+  // Otherwise try to match from our known providers
   const issuerLower = issuer.toLowerCase();
-  const categoryLower = category?.toLowerCase() || "";
+  
+  for (const [key, url] of Object.entries(LOGO_MAP)) {
+    if (issuerLower.includes(key)) {
+      return url;
+    }
+  }
 
-  // Check issuer first
-  if (issuerLower.includes("edp")) return edpLogo;
-  if (issuerLower.includes("meo")) return meoLogo;
-  if (issuerLower.includes("nos")) return nosLogo;
-  if (issuerLower.includes("vodafone")) return vodafoneLogo;
-
-  // Check category
-  if (categoryLower.includes("water") || categoryLower.includes("água")) return waterLogo;
-  if (categoryLower.includes("gas") || categoryLower.includes("gás")) return gasLogo;
-  if (categoryLower.includes("internet") || categoryLower.includes("telecomunicações")) return internetLogo;
-  if (categoryLower.includes("electricity") || categoryLower.includes("eletricidade")) return edpLogo;
-  if (categoryLower.includes("insurance") || categoryLower.includes("seguro")) return insuranceLogo;
-  if (categoryLower.includes("phone") || categoryLower.includes("telefone") || categoryLower.includes("mobile")) return meoLogo;
-
-  // Default to internet logo
-  return internetLogo;
+  // Return null if no logo found - component should show placeholder
+  return null;
 }
 
 export function getCategoryColor(category?: string | null): string {

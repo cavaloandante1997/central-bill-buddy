@@ -168,22 +168,23 @@ export default function Invoices() {
                 <TableBody>
                   {invoices.map((invoice) => {
                     const hasService = !!invoice.service?.issuer;
+                    const serviceData = invoice.service as any;
                     const logo = hasService 
-                      ? getServiceLogo(invoice.service.issuer, invoice.service.category)
+                      ? getServiceLogo(serviceData.issuer, serviceData.category, serviceData.logo_url)
                       : null;
                     const categoryColor = hasService 
-                      ? getCategoryColor(invoice.service.category)
+                      ? getCategoryColor(serviceData.category)
                       : "";
 
                     return (
                       <TableRow key={invoice.id} className="group">
                         <TableCell>
                           {logo ? (
-                            <div className="w-10 h-10 rounded-lg border-2 border-border overflow-hidden shadow-sm">
+                            <div className="w-10 h-10 rounded-lg border-2 border-border overflow-hidden shadow-sm flex items-center justify-center bg-white">
                               <img 
                                 src={logo} 
                                 alt={invoice.service?.issuer || ""}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-contain p-1"
                               />
                             </div>
                           ) : (

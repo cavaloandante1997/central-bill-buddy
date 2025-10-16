@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Zap, ZapOff, Trash2 } from "lucide-react";
+import { Plus, Zap, ZapOff, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { getServiceLogo, getCategoryColor } from "@/lib/logos";
 import {
@@ -233,7 +233,7 @@ export default function Services() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {services.map((service) => {
-              const logo = getServiceLogo(service.issuer, service.category);
+              const logo = getServiceLogo(service.issuer, service.category, service.logo_url);
               const categoryColor = getCategoryColor(service.category);
               
               return (
@@ -247,7 +247,11 @@ export default function Services() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-14 h-14 rounded-xl bg-card border-2 border-border flex items-center justify-center overflow-hidden shadow-sm">
-                          <img src={logo} alt={service.issuer} className="w-full h-full object-cover" />
+                          {logo ? (
+                            <img src={logo} alt={service.issuer} className="w-full h-full object-contain p-2" />
+                          ) : (
+                            <Building2 className="h-8 w-8 text-muted-foreground" />
+                          )}
                         </div>
                         <div>
                           <CardTitle className="text-lg">{service.issuer}</CardTitle>

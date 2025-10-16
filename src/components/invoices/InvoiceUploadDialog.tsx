@@ -113,17 +113,26 @@ export function InvoiceUploadDialog({ open, onOpenChange, onSuccess }: InvoiceUp
           let serviceId: string;
 
           if (services && services.length > 0) {
-            // Use existing service
+            // Use existing service and update logo if provided
             serviceId = services[0].id;
+            
+            if (data.logo_url && !services[0].logo_url) {
+              await supabase
+                .from("services")
+                .update({ logo_url: data.logo_url })
+                .eq("id", serviceId);
+            }
+            
             toast.success(`Fatura associada ao serviço existente: ${data.issuer}`);
           } else {
-            // Create new service
+            // Create new service with logo
             const { data: newService, error: serviceError } = await supabase
               .from("services")
               .insert({
                 user_id: user.id,
                 issuer: data.issuer,
                 category: data.category || null,
+                logo_url: data.logo_url || null,
               })
               .select()
               .single();

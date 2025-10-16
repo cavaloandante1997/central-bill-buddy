@@ -5,6 +5,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const LOGO_URLS: Record<string, string> = {
+  "edp": "https://www.edp.pt/sites/default/files/2021-09/logo-edp.svg",
+  "meo": "https://www.meo.pt/_layouts/images/meo-logo.svg",
+  "nos": "https://www.nos.pt/Style%20Library/img/logos/nos-logo.svg",
+  "vodafone": "https://www.vodafone.pt/content/dam/vodafone/images/logos/vodafone-logo.svg",
+  "epal": "https://www.epal.pt/EPAL/media/Images/logo-epal.png",
+  "galp": "https://www.galp.com/corp/Portals/0/Recursos/Imagens/logotipo.png",
+};
+
+function findLogoUrl(issuer: string): string | null {
+  const issuerLower = issuer.toLowerCase();
+  for (const [key, url] of Object.entries(LOGO_URLS)) {
+    if (issuerLower.includes(key)) {
+      return url;
+    }
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -47,7 +66,7 @@ Extract all relevant billing information including company name, amounts, dates,
           parameters: {
             type: "object",
             properties: {
-              issuer: { type: "string", description: "Company/issuer name" },
+              issuer: { type: "string", description: "Company or service provider name (e.g., EDP, MEO, NOS, Vodafone)" },
               category: {
                 type: "string",
                 enum: ["Eletricidade", "Água", "Gás", "Internet", "Telecomunicações", "Seguro"],
@@ -57,7 +76,7 @@ Extract all relevant billing information including company name, amounts, dates,
               issue_date: { type: "string", description: "Issue date in YYYY-MM-DD format" },
               contract_number: { type: "string", description: "Contract or client number" },
             },
-            required: ["issuer", "category", "amount_cents", "due_date"],
+            required: ["issuer", "category"],
             additionalProperties: false,
           },
         },
@@ -142,6 +161,12 @@ Additional context: ${context}`;
 
     const result = JSON.parse(toolCall.function.arguments);
     console.log("Categorization result:", result);
+
+    // Add logo URL if parsing invoice
+    if (pdfData && result.issuer) {
+      const logoUrl = findLogoUrl(result.issuer);
+      result.logo_url = logoUrl;
+    }
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
