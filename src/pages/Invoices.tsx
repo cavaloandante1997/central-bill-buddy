@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { InvoiceActionsDialog } from "@/components/invoices/InvoiceActionsDialog";
+import { InvoiceUploadDialog } from "@/components/invoices/InvoiceUploadDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ export default function Invoices() {
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   useEffect(() => {
     loadInvoices();
@@ -112,13 +114,19 @@ export default function Invoices() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Faturas
-          </h2>
-          <p className="text-muted-foreground">
-            Histórico completo de todas as suas faturas
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              Faturas
+            </h2>
+            <p className="text-muted-foreground">
+              Histórico completo de todas as suas faturas
+            </p>
+          </div>
+          <Button onClick={() => setUploadDialogOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Carregar Fatura
+          </Button>
         </div>
 
         {loading ? (
@@ -239,6 +247,12 @@ export default function Invoices() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         invoice={selectedInvoice}
+        onSuccess={loadInvoices}
+      />
+
+      <InvoiceUploadDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
         onSuccess={loadInvoices}
       />
     </DashboardLayout>

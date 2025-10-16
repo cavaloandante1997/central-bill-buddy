@@ -11,16 +11,88 @@ serve(async (req) => {
   }
 
   try {
-    const { issuer, parsedFields } = await req.json();
-    console.log("Categorizing invoice for issuer:", issuer);
+    const { issuer, parsedFields, pdfData, fileName } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Build context from parsed fields
-    const context = parsedFields ? JSON.stringify(parsedFields) : "No additional data";
+    let systemPrompt: string;
+    let userPrompt: string;
+    let toolDefinition: any;
+
+    // Different handling for PDF upload vs simple categorization
+    if (pdfData) {
+      console.log("Processing PDF invoice:", fileName);
+      systemPrompt = `You are an expert at parsing and categorizing Portuguese utility bills and invoices.
+Analyze the invoice data and extract:
+1. Company/issuer name
+2. Invoice amount (in cents as integer)
+3. Due date (YYYY-MM-DD format)
+4. Issue date if available (YYYY-MM-DD format)
+5. Contract/client number if available
+6. Service category
+
+Return accurate extracted data.`;
+
+      userPrompt = `Parse this Portuguese invoice. The file is: ${fileName}
+Extract all relevant billing information including company name, amounts, dates, and contract numbers.`;
+
+      toolDefinition = {
+        type: "function",
+        function: {
+          name: "parse_invoice",
+          description: "Parse and categorize a Portuguese invoice",
+          parameters: {
+            type: "object",
+            properties: {
+              issuer: { type: "string", description: "Company/issuer name" },
+              category: {
+                type: "string",
+                enum: ["Eletricidade", "Água", "Gás", "Internet", "Telecomunicações", "Seguro"],
+              },
+              amount_cents: { type: "integer", description: "Amount in cents" },
+              due_date: { type: "string", description: "Due date in YYYY-MM-DD format" },
+              issue_date: { type: "string", description: "Issue date in YYYY-MM-DD format" },
+              contract_number: { type: "string", description: "Contract or client number" },
+            },
+            required: ["issuer", "category", "amount_cents", "due_date"],
+            additionalProperties: false,
+          },
+        },
+      };
+    } else {
+      console.log("Categorizing invoice for issuer:", issuer);
+      const context = parsedFields ? JSON.stringify(parsedFields) : "No additional data";
+      
+      systemPrompt = `You are an expert at categorizing Portuguese utility bills and invoices.
+Based on the company name, determine the service category and provide a description.`;
+
+      userPrompt = `Categorize this Portuguese company/service:
+Company name: ${issuer}
+Additional context: ${context}`;
+
+      toolDefinition = {
+        type: "function",
+        function: {
+          name: "categorize_service",
+          description: "Categorize a Portuguese utility or service provider",
+          parameters: {
+            type: "object",
+            properties: {
+              category: {
+                type: "string",
+                enum: ["Eletricidade", "Água", "Gás", "Internet", "Telecomunicações", "Seguro"],
+              },
+              description: { type: "string", description: "Brief description" },
+            },
+            required: ["category", "description"],
+            additionalProperties: false,
+          },
+        },
+      };
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -31,65 +103,11 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          {
-            role: "system",
-            content: `You are an expert at categorizing Portuguese utility bills and invoices. 
-Based on the company name and invoice data, determine:
-1. The service category (one of: electricity, water, gas, internet, telecomunicações, telefone, seguro, insurance)
-2. A brief description of what the company provides
-
-Return ONLY a JSON object with this exact structure:
-{
-  "category": "category_name",
-  "description": "brief description"
-}`,
-          },
-          {
-            role: "user",
-            content: `Categorize this Portuguese company/service:
-Company name: ${issuer}
-Additional context: ${context}`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
-        temperature: 0.2,
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "categorize_service",
-              description: "Categorize a Portuguese utility or service provider",
-              parameters: {
-                type: "object",
-                properties: {
-                  category: {
-                    type: "string",
-                    enum: [
-                      "electricity",
-                      "eletricidade",
-                      "water",
-                      "água",
-                      "gas",
-                      "gás",
-                      "internet",
-                      "telecomunicações",
-                      "telefone",
-                      "mobile",
-                      "seguro",
-                      "insurance",
-                    ],
-                  },
-                  description: {
-                    type: "string",
-                    description: "Brief description of what the company provides",
-                  },
-                },
-                required: ["category", "description"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "categorize_service" } },
+        tools: [toolDefinition],
+        tool_choice: { type: "function", function: { name: pdfData ? "parse_invoice" : "categorize_service" } },
       }),
     });
 
