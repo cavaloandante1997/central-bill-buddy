@@ -45,7 +45,7 @@ export function ServiceCard({ service, nextInvoice, onClick }: ServiceCardProps)
       className="group hover:shadow-lg transition-all duration-300 cursor-pointer hover:-translate-y-1 border-2 hover:border-primary/50 overflow-hidden"
       onClick={onClick}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       
       <CardHeader className="relative pb-3">
         <div className="flex items-start justify-between">

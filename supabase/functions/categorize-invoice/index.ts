@@ -44,48 +44,78 @@ serve(async (req) => {
     // Different handling for PDF upload vs simple categorization
     if (pdfData) {
       console.log("Processing PDF invoice:", fileName);
-      systemPrompt = `You are an expert at reading and parsing Portuguese utility bills and invoices from PDF documents.
-You must carefully read and extract information from the PDF content, NOT from the filename.
+      
+      systemPrompt = `You are an expert at analyzing Portuguese utility bills and invoices from document images.
+You will receive a PDF document as an image. Carefully examine ALL text visible in the document.
 
-Extract the following information by reading the PDF:
-1. Company/issuer name (the company that issued the invoice)
-2. Invoice amount in euros (convert to cents as integer)
-3. Due date (data de vencimento) in YYYY-MM-DD format
-4. Issue date (data de emissão) in YYYY-MM-DD format
-5. Contract/client number (número de contrato/cliente)
-6. Service category (type of service: electricity, water, gas, internet, telecom, insurance)
-7. Multibanco payment reference (Referência Multibanco) - usually a 9-digit number
-8. Multibanco entity (Entidade Multibanco) - usually a 5-digit number
+CRITICAL EXTRACTION RULES:
+1. Company/Issuer: Look for the main company name at the top of the invoice
+2. Total Amount: Find "Total a Pagar", "Valor Total", "Total" - this is usually the LARGEST number, convert to cents (multiply by 100)
+3. Due Date: Look for "Data de Vencimento", "Data Limite", "Válido até" - format as YYYY-MM-DD
+4. Issue Date: Look for "Data de Emissão", "Data da Fatura" - format as YYYY-MM-DD
+5. Contract Number: Look for "Nº Contrato", "Nº Cliente", "Cliente"
+6. Multibanco Entity: A 5-digit number near "Entidade" or "Entity" label
+7. Multibanco Reference: A 9-digit number (with spaces like XXX XXX XXX) near "Referência" or "Reference" label
 
-IMPORTANT: Read the actual PDF content carefully. Do not rely on the filename.`;
+IMPORTANT: 
+- The total amount is usually in euros with decimal (e.g., 123.45 €) - convert to cents (12345)
+- Multibanco reference often has spaces (123 456 789) - remove spaces and return as 123456789
+- Read carefully, these are REAL invoices with real payment information`;
 
-      userPrompt = `Read and parse this Portuguese invoice PDF.
-Filename: ${fileName}
-PDF Content: ${pdfData}
+      userPrompt = `Analyze this Portuguese invoice document image and extract all payment information.
+Document: ${fileName}
 
-Extract all billing information including company name, amounts, dates, contract number, and Multibanco payment details (entity and reference).`;
+Look carefully at the entire document and extract:
+- The company name (top of document)
+- Total amount to pay (usually the largest number, look for "Total")
+- Payment due date
+- Issue date
+- Any contract/client numbers
+- Multibanco payment details (Entity: 5 digits, Reference: 9 digits)`;
 
       toolDefinition = {
         type: "function",
         function: {
           name: "parse_invoice",
-          description: "Parse and categorize a Portuguese invoice from PDF",
+          description: "Parse Portuguese invoice from document image",
           parameters: {
             type: "object",
             properties: {
-              issuer: { type: "string", description: "Company or service provider name" },
+              issuer: { 
+                type: "string", 
+                description: "Company name found at the top of the invoice" 
+              },
               category: {
                 type: "string",
                 enum: ["Eletricidade", "Água", "Gás", "Internet", "Telecomunicações", "Seguro"],
+                description: "Service category based on the company"
               },
-              amount_cents: { type: "integer", description: "Total amount in cents" },
-              due_date: { type: "string", description: "Due date in YYYY-MM-DD format" },
-              issue_date: { type: "string", description: "Issue date in YYYY-MM-DD format" },
-              contract_number: { type: "string", description: "Contract or client number" },
-              multibanco_entity: { type: "string", description: "Multibanco entity (5 digits)" },
-              multibanco_reference: { type: "string", description: "Multibanco reference (9 digits)" },
+              amount_cents: { 
+                type: "integer", 
+                description: "Total amount in cents (euros × 100). Look for largest number or 'Total a Pagar'" 
+              },
+              due_date: { 
+                type: "string", 
+                description: "Payment due date in YYYY-MM-DD format" 
+              },
+              issue_date: { 
+                type: "string", 
+                description: "Invoice issue date in YYYY-MM-DD format" 
+              },
+              contract_number: { 
+                type: "string", 
+                description: "Contract or client number if visible" 
+              },
+              multibanco_entity: { 
+                type: "string", 
+                description: "5-digit Multibanco entity number" 
+              },
+              multibanco_reference: { 
+                type: "string", 
+                description: "9-digit Multibanco reference (remove spaces)" 
+              },
             },
-            required: ["issuer", "category"],
+            required: ["issuer", "category", "amount_cents"],
             additionalProperties: false,
           },
         },
@@ -122,6 +152,25 @@ Additional context: ${context}`;
       };
     }
 
+    // Prepare messages - for PDF, send as vision/image input
+    const messages: any[] = [{ role: "system", content: systemPrompt }];
+    
+    if (pdfData) {
+      // Send PDF as image for vision analysis
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: userPrompt },
+          { 
+            type: "image_url", 
+            image_url: { url: pdfData }
+          }
+        ]
+      });
+    } else {
+      messages.push({ role: "user", content: userPrompt });
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -130,10 +179,7 @@ Additional context: ${context}`;
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
+        messages: messages,
         tools: [toolDefinition],
         tool_choice: { type: "function", function: { name: pdfData ? "parse_invoice" : "categorize_service" } },
       }),
