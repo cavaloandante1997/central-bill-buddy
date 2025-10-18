@@ -40,14 +40,32 @@ export default function Services() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      const { data: servicesData, error } = await supabase
         .from("services")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setServices(data || []);
+
+      // Fetch last invoice for each service
+      const servicesWithInvoices = await Promise.all(
+        (servicesData || []).map(async (service) => {
+          const { data: invoices } = await supabase
+            .from("invoices")
+            .select("*")
+            .eq("service_id", service.id)
+            .order("issue_date", { ascending: false })
+            .limit(1);
+
+          return {
+            ...service,
+            lastInvoice: invoices?.[0] || null,
+          };
+        })
+      );
+
+      setServices(servicesWithInvoices);
     } catch (error) {
       console.error("Error loading services:", error);
       toast.error("Erro ao carregar serviços");
@@ -272,6 +290,63 @@ export default function Services() {
                   </CardHeader>
 
                   <CardContent className="relative space-y-4">
+                    {service.lastInvoice && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Última Fatura</span>
+                          <Badge variant={service.lastInvoice.status === "paid" ? "default" : "secondary"}>
+                            {service.lastInvoice.status === "paid" ? "Paga" : "Em Aberto"}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <p className="text-muted-foreground">Emissão</p>
+                            <p className="font-medium">
+                              {service.lastInvoice.issue_date 
+                                ? new Date(service.lastInvoice.issue_date).toLocaleDateString("pt-PT")
+                                : "—"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Vencimento</p>
+                            <p className="font-medium">
+                              {new Date(service.lastInvoice.due_date).toLocaleDateString("pt-PT")}
+                            </p>
+                          </div>
+                        </div>
+
+                        {service.lastInvoice.parsed_fields?.multibanco_entity && (
+                          <div className="bg-muted/50 rounded-lg p-2 space-y-1">
+                            <p className="text-xs text-muted-foreground">Multibanco</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs">Entidade:</span>
+                              <span className="text-xs font-mono font-bold">
+                                {service.lastInvoice.parsed_fields.multibanco_entity}
+                              </span>
+                            </div>
+                            {service.lastInvoice.parsed_fields?.multibanco_reference && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Referência:</span>
+                                <span className="text-xs font-mono font-bold">
+                                  {service.lastInvoice.parsed_fields.multibanco_reference}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="pt-2 border-t border-border">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Valor</span>
+                            <span className="text-sm font-bold">
+                              {formatCurrency(service.lastInvoice.amount_cents)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {service.contract_number && (
                       <div className="bg-muted/50 rounded-lg p-3">
                         <p className="text-xs text-muted-foreground mb-1">Nº Contrato</p>

@@ -44,37 +44,46 @@ serve(async (req) => {
     // Different handling for PDF upload vs simple categorization
     if (pdfData) {
       console.log("Processing PDF invoice:", fileName);
-      systemPrompt = `You are an expert at parsing and categorizing Portuguese utility bills and invoices.
-Analyze the invoice data and extract:
-1. Company/issuer name
-2. Invoice amount (in cents as integer)
-3. Due date (YYYY-MM-DD format)
-4. Issue date if available (YYYY-MM-DD format)
-5. Contract/client number if available
-6. Service category
+      systemPrompt = `You are an expert at reading and parsing Portuguese utility bills and invoices from PDF documents.
+You must carefully read and extract information from the PDF content, NOT from the filename.
 
-Return accurate extracted data.`;
+Extract the following information by reading the PDF:
+1. Company/issuer name (the company that issued the invoice)
+2. Invoice amount in euros (convert to cents as integer)
+3. Due date (data de vencimento) in YYYY-MM-DD format
+4. Issue date (data de emissão) in YYYY-MM-DD format
+5. Contract/client number (número de contrato/cliente)
+6. Service category (type of service: electricity, water, gas, internet, telecom, insurance)
+7. Multibanco payment reference (Referência Multibanco) - usually a 9-digit number
+8. Multibanco entity (Entidade Multibanco) - usually a 5-digit number
 
-      userPrompt = `Parse this Portuguese invoice. The file is: ${fileName}
-Extract all relevant billing information including company name, amounts, dates, and contract numbers.`;
+IMPORTANT: Read the actual PDF content carefully. Do not rely on the filename.`;
+
+      userPrompt = `Read and parse this Portuguese invoice PDF.
+Filename: ${fileName}
+PDF Content: ${pdfData}
+
+Extract all billing information including company name, amounts, dates, contract number, and Multibanco payment details (entity and reference).`;
 
       toolDefinition = {
         type: "function",
         function: {
           name: "parse_invoice",
-          description: "Parse and categorize a Portuguese invoice",
+          description: "Parse and categorize a Portuguese invoice from PDF",
           parameters: {
             type: "object",
             properties: {
-              issuer: { type: "string", description: "Company or service provider name (e.g., EDP, MEO, NOS, Vodafone)" },
+              issuer: { type: "string", description: "Company or service provider name" },
               category: {
                 type: "string",
                 enum: ["Eletricidade", "Água", "Gás", "Internet", "Telecomunicações", "Seguro"],
               },
-              amount_cents: { type: "integer", description: "Amount in cents" },
+              amount_cents: { type: "integer", description: "Total amount in cents" },
               due_date: { type: "string", description: "Due date in YYYY-MM-DD format" },
               issue_date: { type: "string", description: "Issue date in YYYY-MM-DD format" },
               contract_number: { type: "string", description: "Contract or client number" },
+              multibanco_entity: { type: "string", description: "Multibanco entity (5 digits)" },
+              multibanco_reference: { type: "string", description: "Multibanco reference (9 digits)" },
             },
             required: ["issuer", "category"],
             additionalProperties: false,
@@ -166,6 +175,14 @@ Additional context: ${context}`;
     if (pdfData && result.issuer) {
       const logoUrl = findLogoUrl(result.issuer);
       result.logo_url = logoUrl;
+      
+      // Store Multibanco details in parsed_fields
+      if (result.multibanco_entity || result.multibanco_reference) {
+        result.parsed_fields = {
+          multibanco_entity: result.multibanco_entity || null,
+          multibanco_reference: result.multibanco_reference || null,
+        };
+      }
     }
 
     return new Response(JSON.stringify(result), {

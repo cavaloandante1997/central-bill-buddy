@@ -142,7 +142,7 @@ export function InvoiceUploadDialog({ open, onOpenChange, onSuccess }: InvoiceUp
             toast.success(`Novo serviço criado: ${data.issuer}`);
           }
 
-          // Create invoice record
+          // Create invoice record with Multibanco details
           const { error: invoiceError } = await supabase
             .from("invoices")
             .insert({

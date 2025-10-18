@@ -1,27 +1,58 @@
-// Dynamic logo mapping - logos are fetched from company websites by AI
-const LOGO_MAP: Record<string, string> = {
-  "edp": "https://www.edp.pt/sites/default/files/2021-09/logo-edp.svg",
-  "meo": "https://www.meo.pt/_layouts/images/meo-logo.svg",
-  "nos": "https://www.nos.pt/Style%20Library/img/logos/nos-logo.svg",
-  "vodafone": "https://www.vodafone.pt/content/dam/vodafone/images/logos/vodafone-logo.svg",
-  "epal": "https://www.epal.pt/EPAL/media/Images/logo-epal.png",
-  "galp": "https://www.galp.com/corp/Portals/0/Recursos/Imagens/logotipo.png",
+import edpLogo from "@/assets/logos/edp.png";
+import meoLogo from "@/assets/logos/meo.png";
+import nosLogo from "@/assets/logos/nos.png";
+import vodafoneLogo from "@/assets/logos/vodafone.png";
+import waterLogo from "@/assets/logos/water.png";
+import gasLogo from "@/assets/logos/gas.png";
+import internetLogo from "@/assets/logos/internet.png";
+import insuranceLogo from "@/assets/logos/insurance.png";
+
+const LOCAL_LOGO_MAP: Record<string, string> = {
+  edp: edpLogo,
+  meo: meoLogo,
+  nos: nosLogo,
+  vodafone: vodafoneLogo,
+  epal: waterLogo,
+  água: waterLogo,
+  water: waterLogo,
+  galp: gasLogo,
+  gás: gasLogo,
+  gas: gasLogo,
+  internet: internetLogo,
+  telecomunicações: internetLogo,
+  seguro: insuranceLogo,
+  insurance: insuranceLogo,
 };
 
-export function getServiceLogo(issuer: string, category?: string | null, logoUrl?: string | null): string | null {
-  // If a logo URL was stored by AI, use it
-  if (logoUrl) return logoUrl;
+export function getServiceLogo(
+  issuer: string,
+  category?: string | null,
+  logoUrl?: string | null
+): string | null {
+  // If we have a logo_url from the database, use it
+  if (logoUrl) {
+    return logoUrl;
+  }
 
-  // Otherwise try to match from our known providers
   const issuerLower = issuer.toLowerCase();
   
-  for (const [key, url] of Object.entries(LOGO_MAP)) {
+  // Check if issuer matches any known company
+  for (const [key, logo] of Object.entries(LOCAL_LOGO_MAP)) {
     if (issuerLower.includes(key)) {
-      return url;
+      return logo;
     }
   }
 
-  // Return null if no logo found - component should show placeholder
+  // Fallback to category-based logos
+  if (category) {
+    const categoryLower = category.toLowerCase();
+    for (const [key, logo] of Object.entries(LOCAL_LOGO_MAP)) {
+      if (categoryLower.includes(key)) {
+        return logo;
+      }
+    }
+  }
+
   return null;
 }
 
