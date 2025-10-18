@@ -6,6 +6,10 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Upload, FileText } from "lucide-react";
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set worker path
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 interface InvoiceUploadDialogProps {
   open: boolean;
@@ -54,6 +58,29 @@ export function InvoiceUploadDialog({ open, onOpenChange, onSuccess }: InvoiceUp
     }
   };
 
+  const convertPdfToImage = async (pdfFile: File): Promise<string> => {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    
+    const scale = 2.0;
+    const viewport = page.getViewport({ scale });
+    
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    
+    if (!context) throw new Error('Failed to get canvas context');
+    
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+    } as any).promise;
+    
+    return canvas.toDataURL('image/jpeg', 0.95);
+  };
+
   const handleUpload = async () => {
     if (!file) {
       toast.error("Por favor, selecione um ficheiro");
@@ -66,115 +93,103 @@ export function InvoiceUploadDialog({ open, onOpenChange, onSuccess }: InvoiceUp
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Utilizador não autenticado");
+        setLoading(false);
         return;
       }
 
-      // Convert PDF to base64 for processing
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+      console.log("Converting PDF to image for OCR...");
+      const imageData = await convertPdfToImage(file);
       
-      reader.onload = async () => {
-        try {
-          const base64Data = reader.result as string;
-          
-          console.log("Calling AI to parse and categorize invoice...");
-          const { data, error } = await supabase.functions.invoke("categorize-invoice", {
-            body: {
-              pdfData: base64Data,
-              fileName: file.name,
-            },
-          });
+      console.log("Calling AI to parse and categorize invoice...");
+      const { data, error } = await supabase.functions.invoke("categorize-invoice", {
+        body: {
+          pdfData: imageData,
+          fileName: file.name,
+        },
+      });
 
-          if (error) {
-            console.error("Error calling categorize function:", error);
-            throw error;
-          }
+      if (error) {
+        console.error("Error calling categorize function:", error);
+        throw error;
+      }
 
-          console.log("AI categorization result:", data);
+      console.log("AI categorization result:", data);
 
-          if (data.error) {
-            if (data.error.includes("Rate limits exceeded")) {
-              toast.error("Limite de pedidos atingido. Por favor, tente novamente mais tarde.");
-            } else if (data.error.includes("Payment required")) {
-              toast.error("Créditos insuficientes. Por favor, adicione créditos à sua conta.");
-            } else {
-              toast.error("Erro ao processar: " + data.error);
-            }
-            return;
-          }
-
-          // Check if there's a matching service
-          const { data: services } = await supabase
-            .from("services")
-            .select("*")
-            .eq("user_id", user.id)
-            .ilike("issuer", `%${data.issuer}%`);
-
-          let serviceId: string;
-
-          if (services && services.length > 0) {
-            // Use existing service and update logo if provided
-            serviceId = services[0].id;
-            
-            if (data.logo_url && !services[0].logo_url) {
-              await supabase
-                .from("services")
-                .update({ logo_url: data.logo_url })
-                .eq("id", serviceId);
-            }
-            
-            toast.success(`Fatura associada ao serviço existente: ${data.issuer}`);
-          } else {
-            // Create new service with logo
-            const { data: newService, error: serviceError } = await supabase
-              .from("services")
-              .insert({
-                user_id: user.id,
-                issuer: data.issuer,
-                category: data.category || null,
-                logo_url: data.logo_url || null,
-              })
-              .select()
-              .single();
-
-            if (serviceError) throw serviceError;
-            serviceId = newService.id;
-            toast.success(`Novo serviço criado: ${data.issuer}`);
-          }
-
-          // Create invoice record with Multibanco details
-          const { error: invoiceError } = await supabase
-            .from("invoices")
-            .insert({
-              service_id: serviceId,
-              amount_cents: data.amount_cents || 0,
-              due_date: data.due_date || new Date().toISOString().split('T')[0],
-              issue_date: data.issue_date || null,
-              parsed_fields: data.parsed_fields || {},
-              status: "pending",
-            });
-
-          if (invoiceError) throw invoiceError;
-
-          toast.success("Fatura processada com sucesso!");
-          onOpenChange(false);
-          onSuccess();
-          setFile(null);
-        } catch (error: any) {
-          console.error("Error processing invoice:", error);
-          toast.error("Erro ao processar fatura");
-        } finally {
-          setLoading(false);
+      if (data.error) {
+        if (data.error.includes("Rate limits exceeded")) {
+          toast.error("Limite de pedidos atingido. Por favor, tente novamente mais tarde.");
+        } else if (data.error.includes("Payment required")) {
+          toast.error("Créditos insuficientes. Por favor, adicione créditos à sua conta.");
+        } else {
+          toast.error("Erro ao processar: " + data.error);
         }
-      };
-
-      reader.onerror = () => {
-        toast.error("Erro ao ler o ficheiro");
         setLoading(false);
-      };
+        return;
+      }
+
+      // Check if there's a matching service
+      const { data: services } = await supabase
+        .from("services")
+        .select("*")
+        .eq("user_id", user.id)
+        .ilike("issuer", `%${data.issuer}%`);
+
+      let serviceId: string;
+
+      if (services && services.length > 0) {
+        // Use existing service and update logo if provided
+        serviceId = services[0].id;
+        
+        if (data.logo_url && !services[0].logo_url) {
+          await supabase
+            .from("services")
+            .update({ logo_url: data.logo_url })
+            .eq("id", serviceId);
+        }
+        
+        toast.success(`Fatura associada ao serviço existente: ${data.issuer}`);
+      } else {
+        // Create new service with logo
+        const { data: newService, error: serviceError } = await supabase
+          .from("services")
+          .insert({
+            user_id: user.id,
+            issuer: data.issuer,
+            category: data.category || null,
+            logo_url: data.logo_url || null,
+          })
+          .select()
+          .single();
+
+        if (serviceError) throw serviceError;
+        serviceId = newService.id;
+        toast.success(`Novo serviço criado: ${data.issuer}`);
+      }
+
+      console.log("Creating invoice with Multibanco details:", data.parsed_fields);
+
+      // Create invoice record with Multibanco details
+      const { error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          service_id: serviceId,
+          amount_cents: data.amount_cents || 0,
+          due_date: data.due_date || new Date().toISOString().split('T')[0],
+          issue_date: data.issue_date || null,
+          parsed_fields: data.parsed_fields || {},
+          status: "pending",
+        });
+
+      if (invoiceError) throw invoiceError;
+
+      toast.success("Fatura processada com sucesso!");
+      onOpenChange(false);
+      onSuccess();
+      setFile(null);
     } catch (error: any) {
-      console.error("Error uploading invoice:", error);
-      toast.error("Erro ao carregar fatura");
+      console.error("Error processing invoice:", error);
+      toast.error("Erro ao processar fatura");
+    } finally {
       setLoading(false);
     }
   };

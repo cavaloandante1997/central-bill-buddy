@@ -5,23 +5,65 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const LOGO_URLS: Record<string, string> = {
-  "edp": "https://www.edp.pt/sites/default/files/2021-09/logo-edp.svg",
-  "meo": "https://www.meo.pt/_layouts/images/meo-logo.svg",
-  "nos": "https://www.nos.pt/Style%20Library/img/logos/nos-logo.svg",
-  "vodafone": "https://www.vodafone.pt/content/dam/vodafone/images/logos/vodafone-logo.svg",
-  "epal": "https://www.epal.pt/EPAL/media/Images/logo-epal.png",
-  "galp": "https://www.galp.com/corp/Portals/0/Recursos/Imagens/logotipo.png",
-};
+const LOGO_DEV_TOKEN = "live_6a1a28fd-6420-4492-aeb0-b297461d9de2";
 
-function findLogoUrl(issuer: string): string | null {
-  const issuerLower = issuer.toLowerCase();
-  for (const [key, url] of Object.entries(LOGO_URLS)) {
-    if (issuerLower.includes(key)) {
-      return url;
+type Company = { name: string; domain: string; aliases?: string[] };
+
+const COMPANIES: Company[] = [
+  { name: "EDP", domain: "edp.pt" },
+  { name: "Galp", domain: "galp.com" },
+  { name: "Iberdrola", domain: "iberdrola.pt" },
+  { name: "Goldenergy", domain: "goldenergy.pt" },
+  { name: "Endesa", domain: "endesa.pt" },
+  { name: "Plenitude", domain: "plenitude.pt" },
+  { name: "Repsol", domain: "repsol.pt" },
+  { name: "ENGIE", domain: "engie.pt" },
+  { name: "AdP", domain: "adp.pt", aliases: ["Águas de Portugal", "Aguas de Portugal"] },
+  { name: "EPAL", domain: "epal.pt" },
+  { name: "MEO", domain: "meo.pt" },
+  { name: "NOS", domain: "nos.pt" },
+  { name: "Vodafone", domain: "vodafone.pt", aliases: ["Vodafone Portugal"] },
+  { name: "NOWO", domain: "nowo.pt" },
+  { name: "DIGI", domain: "digi.pt", aliases: ["Digi Portugal"] },
+];
+
+const normalize = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^\p{Letter}\p{Number}\s]/gu, "")
+    .trim();
+
+function simpleScore(query: string, candidate: string): number {
+  if (query === candidate) return 1;
+  if (candidate.startsWith(query) || query.startsWith(candidate)) return 0.9;
+  if (candidate.includes(query) || query.includes(candidate)) return 0.8;
+  return 0;
+}
+
+function findCompanyDomain(ocrName: string): string | null {
+  const q = normalize(ocrName);
+  // exact/alias match first
+  for (const c of COMPANIES) {
+    const names = [c.name, ...(c.aliases ?? [])].map(normalize);
+    if (names.includes(q)) return c.domain;
+  }
+  // fuzzy fallback
+  let best: { domain: string; score: number } | null = null;
+  for (const c of COMPANIES) {
+    for (const n of [c.name, ...(c.aliases ?? [])]) {
+      const score = simpleScore(q, normalize(n));
+      if (!best || score > best.score) best = { domain: c.domain, score };
     }
   }
-  return null;
+  return best && best.score >= 0.8 ? best.domain : null;
+}
+
+function logoUrlFor(ocrName: string): string | null {
+  const domain = findCompanyDomain(ocrName);
+  if (!domain) return null;
+  return `https://img.logo.dev/${domain}?token=${LOGO_DEV_TOKEN}&format=webp&retina=true&size=128`;
 }
 
 serve(async (req) => {
@@ -46,73 +88,86 @@ serve(async (req) => {
       console.log("Processing PDF invoice:", fileName);
       
       systemPrompt = `You are an expert at analyzing Portuguese utility bills and invoices from document images.
-You will receive a PDF document as an image. Carefully examine ALL text visible in the document.
+You will receive an invoice image. Carefully examine ALL text visible in the document.
 
-CRITICAL EXTRACTION RULES:
-1. Company/Issuer: Look for the main company name at the top of the invoice
-2. Total Amount: Find "Total a Pagar", "Valor Total", "Total" - this is usually the LARGEST number, convert to cents (multiply by 100)
-3. Due Date: Look for "Data de Vencimento", "Data Limite", "Válido até" - format as YYYY-MM-DD
-4. Issue Date: Look for "Data de Emissão", "Data da Fatura" - format as YYYY-MM-DD
-5. Contract Number: Look for "Nº Contrato", "Nº Cliente", "Cliente"
-6. Multibanco Entity: A 5-digit number near "Entidade" or "Entity" label
-7. Multibanco Reference: A 9-digit number (with spaces like XXX XXX XXX) near "Referência" or "Reference" label
+CRITICAL EXTRACTION RULES - FOLLOW EXACTLY:
+1. Company/Issuer: Look at the TOP of the invoice for the main company logo/name (EDP, MEO, NOS, Vodafone, DIGI, Galp, EPAL, etc.)
+2. Total Amount: Find the FINAL AMOUNT TO PAY:
+   - Look for: "Total a Pagar", "Valor Total", "Montante", "Total Fatura"
+   - This is usually the LARGEST number on the invoice
+   - Convert to cents: 45.67€ becomes 4567 (multiply by 100, remove decimals)
+   - DO NOT confuse with subtotals or previous amounts
+3. Due Date: Look for "Data de Vencimento", "Data Limite de Pagamento", "Válido até", "Pagar até"
+   - Format as YYYY-MM-DD
+4. Issue Date: Look for "Data de Emissão", "Data da Fatura", "Emitido em"
+   - Format as YYYY-MM-DD
+5. Contract Number: Look for "Nº Contrato", "Nº Cliente", "Contrato", "Cliente"
+6. Multibanco Entity: A 5-digit number labeled as "Entidade" or "Entity"
+   - Example: 12345
+7. Multibanco Reference: A 9-digit number labeled as "Referência" or "Reference"
+   - Often formatted with spaces: 123 456 789
+   - REMOVE all spaces: return as 123456789
 
-IMPORTANT: 
-- The total amount is usually in euros with decimal (e.g., 123.45 €) - convert to cents (12345)
-- Multibanco reference often has spaces (123 456 789) - remove spaces and return as 123456789
-- Read carefully, these are REAL invoices with real payment information`;
+IMPORTANT PARSING RULES:
+- Amount: Convert euros to cents (multiply by 100): 123.45€ → 12345
+- Multibanco Reference: Remove ALL spaces from the 9-digit number
+- Be precise: Read the EXACT values from the document
+- These are REAL invoices with REAL payment information - accuracy is critical`;
 
-      userPrompt = `Analyze this Portuguese invoice document image and extract all payment information.
+      userPrompt = `Analyze this Portuguese invoice and extract ALL payment information with maximum precision.
 Document: ${fileName}
 
-Look carefully at the entire document and extract:
-- The company name (top of document)
-- Total amount to pay (usually the largest number, look for "Total")
-- Payment due date
-- Issue date
-- Any contract/client numbers
-- Multibanco payment details (Entity: 5 digits, Reference: 9 digits)`;
+Extract EXACTLY:
+1. Company name (from the top logo/header)
+2. FINAL total amount to pay in cents (look for "Total a Pagar" - the biggest number)
+3. Due date (Data de Vencimento) in YYYY-MM-DD
+4. Issue date (Data de Emissão) in YYYY-MM-DD
+5. Contract/Client number (Nº Contrato/Cliente)
+6. Multibanco Entity (5 digits near "Entidade")
+7. Multibanco Reference (9 digits near "Referência" - remove spaces)
+
+Be thorough and precise - this is a real invoice with real payment data.`;
 
       toolDefinition = {
         type: "function",
         function: {
           name: "parse_invoice",
-          description: "Parse Portuguese invoice from document image",
+          description: "Parse Portuguese invoice from document image with maximum precision",
           parameters: {
             type: "object",
             properties: {
               issuer: { 
                 type: "string", 
-                description: "Company name found at the top of the invoice" 
+                description: "Exact company name from top of invoice (e.g., EDP, MEO, NOS, Vodafone, DIGI)" 
               },
               category: {
                 type: "string",
                 enum: ["Eletricidade", "Água", "Gás", "Internet", "Telecomunicações", "Seguro"],
-                description: "Service category based on the company"
+                description: "Service category based on the company type"
               },
               amount_cents: { 
                 type: "integer", 
-                description: "Total amount in cents (euros × 100). Look for largest number or 'Total a Pagar'" 
+                description: "FINAL total amount in cents (euros × 100). Example: 45.67€ = 4567 cents" 
               },
               due_date: { 
                 type: "string", 
-                description: "Payment due date in YYYY-MM-DD format" 
+                description: "Payment due date in YYYY-MM-DD format from 'Data de Vencimento'" 
               },
               issue_date: { 
                 type: "string", 
-                description: "Invoice issue date in YYYY-MM-DD format" 
+                description: "Invoice issue date in YYYY-MM-DD format from 'Data de Emissão'" 
               },
               contract_number: { 
                 type: "string", 
-                description: "Contract or client number if visible" 
+                description: "Contract or client number from 'Nº Contrato' or 'Nº Cliente'" 
               },
               multibanco_entity: { 
                 type: "string", 
-                description: "5-digit Multibanco entity number" 
+                description: "EXACTLY 5 digits from Multibanco 'Entidade' field" 
               },
               multibanco_reference: { 
                 type: "string", 
-                description: "9-digit Multibanco reference (remove spaces)" 
+                description: "EXACTLY 9 digits from Multibanco 'Referência' (spaces removed)" 
               },
             },
             required: ["issuer", "category", "amount_cents"],
@@ -217,10 +272,11 @@ Additional context: ${context}`;
     const result = JSON.parse(toolCall.function.arguments);
     console.log("Categorization result:", result);
 
-    // Add logo URL if parsing invoice
+    // Add logo URL if parsing invoice using logo.dev
     if (pdfData && result.issuer) {
-      const logoUrl = findLogoUrl(result.issuer);
+      const logoUrl = logoUrlFor(result.issuer);
       result.logo_url = logoUrl;
+      console.log(`Logo URL for ${result.issuer}: ${logoUrl}`);
       
       // Store Multibanco details in parsed_fields
       if (result.multibanco_entity || result.multibanco_reference) {
@@ -228,6 +284,7 @@ Additional context: ${context}`;
           multibanco_entity: result.multibanco_entity || null,
           multibanco_reference: result.multibanco_reference || null,
         };
+        console.log(`Multibanco details: Entity=${result.multibanco_entity}, Reference=${result.multibanco_reference}`);
       }
     }
 
