@@ -6,10 +6,6 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Upload, FileText } from "lucide-react";
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Set worker path
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 interface InvoiceUploadDialogProps {
   open: boolean;
@@ -58,27 +54,16 @@ export function InvoiceUploadDialog({ open, onOpenChange, onSuccess }: InvoiceUp
     }
   };
 
-  const convertPdfToImage = async (pdfFile: File): Promise<string> => {
-    const arrayBuffer = await pdfFile.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const page = await pdf.getPage(1);
-    
-    const scale = 2.0;
-    const viewport = page.getViewport({ scale });
-    
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-    
-    if (!context) throw new Error('Failed to get canvas context');
-    
-    await page.render({
-      canvasContext: context,
-      viewport: viewport,
-    } as any).promise;
-    
-    return canvas.toDataURL('image/jpeg', 0.95);
+  const convertPdfToBase64 = async (pdfFile: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(pdfFile);
+    });
   };
 
   const handleUpload = async () => {
@@ -97,13 +82,13 @@ export function InvoiceUploadDialog({ open, onOpenChange, onSuccess }: InvoiceUp
         return;
       }
 
-      console.log("Converting PDF to image for OCR...");
-      const imageData = await convertPdfToImage(file);
+      console.log("Converting PDF to base64 for Azure Document Intelligence...");
+      const pdfData = await convertPdfToBase64(file);
       
-      console.log("Calling AI to parse and categorize invoice...");
+      console.log("Calling Azure to parse invoice...");
       const { data, error } = await supabase.functions.invoke("categorize-invoice", {
         body: {
-          pdfData: imageData,
+          pdfData,
           fileName: file.name,
         },
       });
