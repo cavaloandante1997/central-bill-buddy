@@ -86,7 +86,7 @@ serve(async (req) => {
       console.log("Processing PDF invoice with Azure Document Intelligence:", fileName);
       
       // Convert base64 data URL to raw base64
-      const base64Data = pdfData.replace(/^data:image\/[a-z]+;base64,/, "");
+      const base64Data = pdfData.replace(/^data:[^;]+;base64,/, "");
       const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
       // Submit document to Azure for analysis using prebuilt-invoice model
